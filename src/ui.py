@@ -1,5 +1,9 @@
 import pygame
-from constants import UI, WINDOW_WIDTH, Economy
+from constants import (
+    UI, WINDOW_WIDTH, WINDOW_HEIGHT, Economy,
+    COLORS
+)
+import random
 
 # UI Constants
 UI_FONT_SIZE = UI.Tooltips.FONT_SIZE
@@ -28,18 +32,6 @@ SMALL_ANT_ICON_SIZE = 3
 
 # Resource Icon Constants
 RESOURCE_ICON_SIZE = 12  # New constant for resource icons
-
-# Colors
-COLORS = {
-    'minerals': (139, 69, 19),     # Brown
-    'plants': (34, 139, 34),       # Forest Green
-    'background': (64, 64, 64),    # Dark gray
-    'text': (255, 255, 255),       # White
-    'bar_border': (200, 200, 200), # Light gray
-    'tooltip_bg': (0, 0, 0, 180),  # Semi-transparent black
-    'pip_active': (255, 255, 255), # White
-    'pip_inactive': (100, 100, 100) # Dark gray
-}
 
 # Tooltip texts with unicode symbols
 TOOLTIP_TEXTS = {
@@ -343,32 +335,42 @@ class SettingsIcon(PixelIcon):
         """Generate pixel art for settings gear icon"""
         base_frame = pygame.Surface((self.size, self.size), pygame.SRCALPHA)
         
-        # Gear icon design
+        # More mechanical gear icon design (12x12 grid for better detail)
         gear_layout = [
-            " XXX ",  # Top
-            "X X X",  # Outer gear teeth
-            "XX XX",
-            "X X X",  # Center
-            "XX XX",
-            "X X X",  # Bottom
-            " XXX "
+            "     #      ",  # Outer teeth
+            "   #    #   ",
+            "     ##     ",  # Inner circle starts
+            " #  ####  # ",
+            "   ######   ",  # Core of gear
+            "# ######## #",
+            "   ######   ",
+            " #  ####  # ",
+            "     ##     ",  # Inner circle ends
+            "   #    #   ",
+            "      #     "   # Outer teeth
         ]
         
         # Colors
-        color = (220, 220, 220)  # Light gray
-        hover_color = (255, 255, 255)  # White for hover state
+        normal_color = (180, 180, 180)  # Slightly darker gray for better contrast
+        hover_color = (255, 255, 255)  # White
+        
+        # Scale factor for the 11x11 design to fit the icon size
+        scale = self.size // 11
         
         # Generate normal and hover frames
-        normal_frame = base_frame.copy()
-        hover_frame = base_frame.copy()
-        
-        for y, row in enumerate(gear_layout):
-            for x, char in enumerate(row):
-                if char == 'X':
-                    normal_frame.set_at((x, y), color)
-                    hover_frame.set_at((x, y), hover_color)
-        
-        self.frames = [normal_frame, hover_frame]
+        for color in [normal_color, hover_color]:
+            frame = pygame.Surface((self.size, self.size), pygame.SRCALPHA)
+            
+            for y, row in enumerate(gear_layout):
+                for x, pixel in enumerate(row):
+                    if pixel == '#':
+                        # Draw scaled pixel with slight offset to center
+                        pygame.draw.rect(frame, color, 
+                                       (x * scale + scale//2, 
+                                        y * scale + scale//2, 
+                                        scale, scale))
+            
+            self.frames.append(frame)
 
 class SettingsWindow:
     def __init__(self, screen_width, screen_height):
@@ -459,6 +461,213 @@ class SettingsWindow:
         slider_x = (self.width - self.slider_width) // 2
         return max(0, min(1, (x - slider_x) / self.slider_width))
 
+class SettingsMenu:
+    def __init__(self, screen, game_sounds):
+        self.screen = screen
+        self.game_sounds = game_sounds
+        self.visible = False
+        
+        # Settings window properties
+        window_width = 300
+        window_height = 200
+        self.window_rect = pygame.Rect(
+            screen.get_width() - window_width - 10,
+            screen.get_height() - window_height - 10,
+            window_width,
+            window_height
+        )
+        
+        # Slider properties
+        self.slider_width = 200
+        self.slider_height = 20
+        self.music_slider_rect = pygame.Rect(
+            self.window_rect.x + 50,
+            self.window_rect.y + 50,
+            self.slider_width,
+            self.slider_height
+        )
+        self.sound_slider_rect = pygame.Rect(
+            self.window_rect.x + 50,
+            self.window_rect.y + 100,
+            self.slider_width,
+            self.slider_height
+        )
+        
+        # Settings button (gear icon)
+        self.button_size = 32
+        self.settings_button = pygame.Rect(
+            screen.get_width() - self.button_size - 10,
+            screen.get_height() - self.button_size - 10,
+            self.button_size,
+            self.button_size
+        )
+        
+        self.dragging_music = False
+        self.dragging_sound = False
+        
+        # Add tooltip text
+        self.tooltip_text = "Settings - Adjust music and sound effect volumes"
+        self.tooltip_font = pygame.font.Font(None, UI.Tooltips.FONT_SIZE)
+        
+        # Initialize pixel icons
+        self.pixel_icons = {
+            'settings': SettingsIcon(self.button_size)
+        }
+        
+        # Add tooltip corners
+        self.tooltip_corners = self.generate_tooltip_corners()
+
+    def draw(self):
+        # Draw settings button and menu
+        pygame.draw.rect(self.screen, (50, 50, 50), self.settings_button)
+        settings_icon = self.pixel_icons['settings'].get_current_frame()
+        self.screen.blit(settings_icon, self.settings_button)
+        
+        # Draw tooltip on hover
+        mouse_pos = pygame.mouse.get_pos()
+        if self.settings_button.collidepoint(mouse_pos):
+            # Use HUD's tooltip drawing method
+            HUD.draw_tooltip(self, self.screen, self.tooltip_text, self.settings_button, self.tooltip_font)
+        
+        # Draw settings window if visible
+        if self.visible:
+            # Draw settings window
+            pygame.draw.rect(self.screen, (50, 50, 50), self.window_rect)
+            pygame.draw.rect(self.screen, (100, 100, 100), self.window_rect, 2)
+            
+            # Draw sliders
+            pygame.draw.rect(self.screen, (150, 150, 150), self.music_slider_rect)
+            pygame.draw.rect(self.screen, (150, 150, 150), self.sound_slider_rect)
+            
+            # Draw slider handles
+            music_handle_x = self.music_slider_rect.x + (self.music_slider_rect.width * self.game_sounds.music_volume)
+            sound_handle_x = self.sound_slider_rect.x + (self.sound_slider_rect.width * self.game_sounds.sound_volume)
+            
+            pygame.draw.rect(self.screen, (200, 200, 200), 
+                           (music_handle_x - 5, self.music_slider_rect.y, 10, self.slider_height))
+            pygame.draw.rect(self.screen, (200, 200, 200), 
+                           (sound_handle_x - 5, self.sound_slider_rect.y, 10, self.slider_height))
+            
+            # Draw labels
+            font = pygame.font.Font(None, 24)
+            music_label = font.render("Music", True, (200, 200, 200))
+            sound_label = font.render("Sound Effects", True, (200, 200, 200))
+            
+            self.screen.blit(music_label, (self.window_rect.x + 50, self.music_slider_rect.y - 25))
+            self.screen.blit(sound_label, (self.window_rect.x + 50, self.sound_slider_rect.y - 25))
+    
+    def handle_event(self, event):
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            if self.settings_button.collidepoint(event.pos):
+                self.visible = not self.visible
+            elif self.visible:
+                if self.music_slider_rect.collidepoint(event.pos):
+                    self.dragging_music = True
+                elif self.sound_slider_rect.collidepoint(event.pos):
+                    self.dragging_sound = True
+        
+        elif event.type == pygame.MOUSEBUTTONUP:
+            self.dragging_music = False
+            self.dragging_sound = False
+        
+        elif event.type == pygame.MOUSEMOTION:
+            if self.dragging_music:
+                rel_x = (event.pos[0] - self.music_slider_rect.x) / self.slider_width
+                self.game_sounds.music_volume = max(0, min(1, rel_x))
+                self.game_sounds.set_volumes(self.game_sounds.sound_volume, self.game_sounds.music_volume)
+            
+            elif self.dragging_sound:
+                rel_x = (event.pos[0] - self.sound_slider_rect.x) / self.slider_width
+                self.game_sounds.sound_volume = max(0, min(1, rel_x))
+                self.game_sounds.set_volumes(self.game_sounds.sound_volume, self.game_sounds.music_volume)
+
+    def generate_tooltip_corners(self):
+        """Generate pixel art corners for tooltips"""
+        corner_design = [
+            " ##",  # 3x3 corner piece
+            "# #",
+            "## "
+        ]
+        
+        corners = {}
+        corner_size = 3
+        
+        for position in ['tl', 'tr', 'bl', 'br']:
+            corner = pygame.Surface((corner_size, corner_size), pygame.SRCALPHA)
+            
+            for y, row in enumerate(corner_design):
+                for x, pixel in enumerate(row):
+                    if pixel == '#':
+                        color = UI.Tooltips.BORDER_COLOR
+                        draw_x = x if 'l' in position else (corner_size - 1 - x)
+                        draw_y = y if 't' in position else (corner_size - 1 - y)
+                        corner.set_at((draw_x, draw_y), color)
+            
+            corners[position] = corner
+            
+        return corners
+
+class PixelLogo:
+    def __init__(self, width=300):
+        """Create Amuke Games pixel logo"""
+        # Base colors from the original logo
+        self.colors = {
+            'orange': (255, 140, 70),   # Top stripe
+            'pink': (255, 80, 120),     # Middle stripe
+            'blue': (70, 180, 255),     # Bottom stripe
+            'plus': (255, 255, 255, 180)  # Plus symbols with transparency
+        }
+        
+        # Calculate height based on original proportions
+        height = int(width * 0.3)  # Thinner aspect ratio for the stripes
+        
+        # Create surface with alpha channel
+        self.surface = pygame.Surface((width, height), pygame.SRCALPHA)
+        
+        # Draw the three stripes
+        stripe_height = height // 3
+        self.surface.fill(self.colors['orange'], (0, 0, width, stripe_height))
+        self.surface.fill(self.colors['pink'], (0, stripe_height, width, stripe_height))
+        self.surface.fill(self.colors['blue'], (0, stripe_height * 2, width, stripe_height))
+        
+        # Add floating plus symbols
+        self._add_plus_symbols(width, height)
+    
+    def _add_plus_symbols(self, width, height):
+        """Add floating plus symbols around stripes"""
+        plus_sizes = [(4, 4), (6, 6)]  # Smaller plus sizes
+        num_plus = 12  # Fewer plus symbols
+        
+        for _ in range(num_plus):
+            size = random.choice(plus_sizes)
+            x = random.randint(0, width - size[0])
+            y = random.randint(0, height - size[1])
+            
+            # Draw plus
+            self._draw_plus(x, y, size[0], self.colors['plus'])
+    
+    def _draw_plus(self, x, y, size, color):
+        """Draw a single plus symbol"""
+        thickness = max(1, size // 3)  # Thinner plus symbols
+        
+        # Horizontal line
+        for i in range(size):
+            for t in range(thickness):
+                py = y + (size // 2) - (thickness // 2) + t
+                if 0 <= py < self.surface.get_height():
+                    self.surface.set_at((x + i, py), color)
+        
+        # Vertical line
+        for i in range(size):
+            for t in range(thickness):
+                px = x + (size // 2) - (thickness // 2) + t
+                if 0 <= px < self.surface.get_width():
+                    self.surface.set_at((px, y + i), color)
+    
+    def get_surface(self):
+        """Return the rendered logo surface"""
+        return self.surface
+
 class HUD:
     def __init__(self):
         self.font = pygame.font.Font(None, UI.Tooltips.FONT_SIZE)
@@ -484,6 +693,9 @@ class HUD:
         self.colony_icon_pos = (0, 0)
         self.hover_element = None
         self.kills = 0  # Track snake kills
+        
+        # Add tooltip frame designs
+        self.tooltip_corners = self.generate_tooltip_corners()
 
     def generate_pixel_frame(self):
         """Generate pixelated frame/bubble surface"""
@@ -563,32 +775,83 @@ class HUD:
         # Register tooltip region
         self.tooltip_regions[tooltip_key] = pygame.Rect(x, y, BAR_WIDTH, BAR_HEIGHT)
 
-    def draw_tooltip(self, surface, mouse_pos, text):
-        """Draw tooltip at mouse position"""
-        lines = text.split('\n')
-        max_width = max(self.font.size(line)[0] for line in lines)
-        height = len(lines) * UI.Tooltips.FONT_SIZE
+    def generate_tooltip_corners(self):
+        """Generate pixel art corners for tooltips"""
+        corner_design = [
+            " ##",  # 3x3 corner piece
+            "# #",
+            "## "
+        ]
         
+        corners = {}
+        corner_size = 3
+        
+        for position in ['tl', 'tr', 'bl', 'br']:
+            corner = pygame.Surface((corner_size, corner_size), pygame.SRCALPHA)
+            
+            for y, row in enumerate(corner_design):
+                for x, pixel in enumerate(row):
+                    if pixel == '#':
+                        color = UI.Tooltips.BORDER_COLOR
+                        draw_x = x if 'l' in position else (corner_size - 1 - x)
+                        draw_y = y if 't' in position else (corner_size - 1 - y)
+                        corner.set_at((draw_x, draw_y), color)
+            
+            corners[position] = corner
+            
+        return corners
+
+    def draw_tooltip(self, screen, text, anchor_rect, font=None):
+        """Draw tooltip with decorative frame"""
+        if font is None:
+            font = self.font
+            
         # Create tooltip surface
-        tooltip_surface = pygame.Surface((max_width + UI.Tooltips.PADDING * 2, 
-                                        height + UI.Tooltips.PADDING * 2), pygame.SRCALPHA)
-        pygame.draw.rect(tooltip_surface, UI.Tooltips.BACKGROUND, 
-                        tooltip_surface.get_rect())
+        tooltip_surface = font.render(text, True, UI.Tooltips.TEXT_COLOR)
+        tooltip_rect = tooltip_surface.get_rect()
         
-        # Draw text lines
-        for i, line in enumerate(lines):
-            text_surface = self.font.render(line, True, UI.Tooltips.TEXT_COLOR)
-            tooltip_surface.blit(text_surface, 
-                               (UI.Tooltips.PADDING, 
-                                UI.Tooltips.PADDING + i * UI.Tooltips.FONT_SIZE))
+        # Calculate initial position (above the element)
+        tooltip_rect.centerx = anchor_rect.centerx
+        tooltip_rect.bottom = anchor_rect.top - UI.Tooltips.OFFSET_Y
         
-        # Position tooltip
-        x = min(mouse_pos[0], surface.get_width() - max_width - UI.Tooltips.PADDING * 2)
-        y = mouse_pos[1] - height - UI.Tooltips.PADDING * 2
-        if y < 0:  # If tooltip would go off screen top, show below cursor
-            y = mouse_pos[1] + UI.Tooltips.FONT_SIZE
+        # Create background rect with extra padding for decoration
+        padding = UI.Tooltips.PADDING + 3  # Extra space for corners
+        background_rect = tooltip_rect.inflate(padding * 2, padding * 2)
         
-        surface.blit(tooltip_surface, (x, y))
+        # Adjust position to keep within screen bounds
+        if background_rect.left < 0:
+            offset = -background_rect.left
+            background_rect.left = 0
+            tooltip_rect.left += offset
+        elif background_rect.right > screen.get_width():
+            offset = screen.get_width() - background_rect.right
+            background_rect.right = screen.get_width()
+            tooltip_rect.left += offset
+            
+        if background_rect.top < 0:
+            tooltip_rect.top = anchor_rect.bottom + UI.Tooltips.OFFSET_Y
+            background_rect = tooltip_rect.inflate(padding * 2, padding * 2)
+        
+        # Draw main background
+        pygame.draw.rect(screen, UI.Tooltips.BACKGROUND, background_rect)
+        
+        # Draw decorative border
+        border_rect = background_rect.inflate(-2, -2)
+        pygame.draw.rect(screen, UI.Tooltips.BORDER_COLOR, border_rect, 1)
+        
+        # Draw corners
+        corner_positions = {
+            'tl': background_rect.topleft,
+            'tr': (background_rect.right - 3, background_rect.top),
+            'bl': (background_rect.left, background_rect.bottom - 3),
+            'br': (background_rect.right - 3, background_rect.bottom - 3)
+        }
+        
+        for position, pos in corner_positions.items():
+            screen.blit(self.tooltip_corners[position], pos)
+        
+        # Draw text
+        screen.blit(tooltip_surface, tooltip_rect)
 
     def update(self, mouse_pos):
         """Update tooltip state based on mouse position"""
@@ -645,6 +908,13 @@ class HUD:
             # Handle tooltips
             mouse_pos = pygame.mouse.get_pos()
             self.handle_tooltips(surface, mouse_pos, main_colony, colonies, ants)
+
+            # Draw tooltips for hovered elements
+            if self.hover_element:
+                element_rect = self.tooltip_regions.get(self.hover_element)
+                if element_rect:
+                    tooltip_text = self.get_tooltip_text(self.hover_element, colonies, ants)
+                    self.draw_tooltip(surface, tooltip_text, element_rect)
 
     def draw_status_indicator(self, surface, pos, icon_type, label, value):
         """Draw a status indicator with icon, label and value"""
@@ -741,11 +1011,11 @@ class HUD:
             }
         }
 
-        # Check for hover and draw tooltip
+        # Check for hover and draw tooltip with new style
         for key, data in tooltips.items():
             if data['rect'].collidepoint(mouse_pos):
-                self.draw_tooltip(surface, mouse_pos, data['text'])
-                break 
+                self.draw_tooltip(surface, data['text'], data['rect'])
+                break
 
     def trigger_icon_animation(self, icon_type):
         """Trigger animation for a specific icon"""

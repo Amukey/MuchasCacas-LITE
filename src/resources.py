@@ -142,6 +142,7 @@ class Plant(GameObject):
         self.size = 0  # Start at size 0
         self.sway_offset = random.random() * 6.28
         self.pixels = self.generate_pine_pixels()
+        self.has_spider = False  # Add this to track if a spider is hiding here
         
         # Growth animation properties
         self.is_growing = True
@@ -249,6 +250,22 @@ class Plant(GameObject):
                            (self.position[0] - 10, self.position[1] + 20,
                             int(20 * (self.resources / 30)), 4))
 
+        # If a spider is hiding here, add subtle visual cue
+        if self.has_spider:
+            # Add slight red tint to leaves
+            for (x, y), color, part in self.pixels:
+                if part == 'leaf':
+                    # Mix in a bit of red
+                    red_tint = (min(color[0] + 20, 255), color[1], color[2])
+                    current_color = (*red_tint, alpha)
+                    pixel_rect = pygame.Rect(
+                        self.position[0] + (x * pixel_size) - (current_size // 2),
+                        self.position[1] + (y * pixel_size) - (current_size // 2),
+                        pixel_size,
+                        pixel_size
+                    )
+                    pygame.draw.rect(surface, current_color, pixel_rect)
+
 class Bush(GameObject):
     # Bush colors
     BUSH_COLORS = {
@@ -264,6 +281,7 @@ class Bush(GameObject):
         self.size = self.original_size
         self.sway_offset = random.random() * 6.28
         self.has_berries = random.random() > 0.5  # 50% chance of having berries
+        self.has_spider = False  # Add this to track if a spider is hiding here
         self.pixels = self.generate_bush_pixels()
 
     def generate_bush_pixels(self):
@@ -344,4 +362,32 @@ class Bush(GameObject):
                             20, 4))
             pygame.draw.rect(surface, indicator_fg,
                            (self.position[0] - 10, self.position[1] + 15,
-                            int(20 * (self.resources / 10)), 4)) 
+                            int(20 * (self.resources / 10)), 4))
+
+        # If a spider is hiding here, add subtle visual cue
+        if self.has_spider:
+            # Add slight movement to indicate spider presence
+            sway_multiplier = 1.5 if self.has_spider else 1.0
+            sway = math.sin(time + self.sway_offset) * sway_multiplier
+            sway_offset = sway
+            
+            # Draw each pixel of the bush
+            for (x, y), color, part in self.pixels:
+                # Apply sway only to leaves and berries, not stems
+                sway_offset = sway if part in ['leaf', 'berry'] else 0
+                
+                # Add subtle bounce to berries
+                berry_bounce = 0
+                if part == 'berry':
+                    berry_bounce = math.sin(time * 2 + x * 0.5) * 1
+                
+                # Add alpha to color
+                current_color = (*color, alpha)
+                
+                pixel_rect = pygame.Rect(
+                    self.position[0] + (x * pixel_size) - (current_size // 2) + sway_offset,
+                    self.position[1] + (y * pixel_size) - (current_size // 2) + berry_bounce,
+                    pixel_size,
+                    pixel_size
+                )
+                pygame.draw.rect(surface, current_color, pixel_rect) 
